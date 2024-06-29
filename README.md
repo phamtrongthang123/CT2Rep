@@ -1,5 +1,5 @@
 # CT2Rep
-MICCAI 2024 paper --- CT2Rep: Automated Radiology Report Generation for 3D Medical Imaging
+MICCAI 2024 & CT2Rep: Automated Radiology Report Generation for 3D Medical Imaging
  
  
 ## Requirements
@@ -36,5 +36,5 @@ Our codes are released under a [Creative Commons Attribution (CC-BY) license](ht
 
 
 ## Acknowledgements
-This work is an extension of the following repositories: [GenerateCT](https://github.com/ibrahimethemhamamci/GenerateCT), [R2Gen](https://github.com/cuhksz-nlp/R2Gen), and [Longitudinal Chest X-ray](https://github.com/celestialshine/longitudinal-chest-x-ray).
+This work is an extension of the following repositories: [GenerateCT](https://github.com/ibrahimethemhamamci/GenerateCT), [CT-CLIP](https://github.com/ibrahimethemhamamci/CT-CLIP), [R2Gen](https://github.com/cuhksz-nlp/R2Gen), and [Longitudinal Chest X-ray](https://github.com/celestialshine/longitudinal-chest-x-ray).
 
