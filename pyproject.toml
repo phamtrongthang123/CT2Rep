@@ -1,0 +1,20 @@
+[project]
+name = "ct2rep"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ctvit",
+    "huggingface-hub>=0.34.5",
+    "numpy>=2.3.3",
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.2",
+    "pytorch-lightning>=2.5.5",
+    "torch>=2.8.0",
+    "torchvision>=0.23.0",
+    "tqdm>=4.67.1",
+]
+
+[tool.uv.sources]
+ctvit = { path = "ctvit" }
