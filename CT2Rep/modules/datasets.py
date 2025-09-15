@@ -1,7 +1,4 @@
-import os
 import json
-import torch
-from PIL import Image
 from torch.utils.data import Dataset
 
 

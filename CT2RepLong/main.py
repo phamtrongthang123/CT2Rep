@@ -1,6 +1,4 @@
-import torch
 import argparse
-import numpy as np
 from modules.tokenizers import Tokenizer
 from modules.dataloaders import R2DataLoader
 from modules.metrics import compute_scores
