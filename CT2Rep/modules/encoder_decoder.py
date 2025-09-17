@@ -1,6 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import copy
 import math
@@ -10,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .att_model import pack_wrapper, AttModel
+from .att_model import AttModel, pack_wrapper
 
 
 def clones(module, N):
@@ -30,7 +28,7 @@ def attention(query, key, value, mask=None, dropout=None):
 
 def subsequent_mask(size):
     attn_shape = (1, size, size)
-    subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
+    subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype("uint8")
     return torch.from_numpy(subsequent_mask) == 0
 
 
@@ -52,7 +50,9 @@ class Transformer(nn.Module):
     def decode(self, hidden_states, src_mask, tgt, tgt_mask):
         memory = self.rm.init_memory(hidden_states.size(0)).to(hidden_states)
         memory = self.rm(self.tgt_embed(tgt), memory)
-        return self.decoder(self.tgt_embed(tgt), hidden_states, src_mask, tgt_mask, memory)
+        return self.decoder(
+            self.tgt_embed(tgt), hidden_states, src_mask, tgt_mask, memory
+        )
 
 
 class Encoder(nn.Module):
@@ -110,20 +110,31 @@ class Decoder(nn.Module):
         self.norm = LayerNorm(layer.d_model)
 
     def forward(self, x, hidden_states, src_mask, tgt_mask, memory):
-        print(x.shape)
+        # print(x.shape) # (bs , tang dan, 512) torch.Size([1, 1, 512]) torch.Size([3, 2, 512]) torch.Size([3, 3, 512]) torch.Size([3, 4, 512]) torch.Size([3, 5, 512]), ..., torch.Size([3, 173, 512]) torch.Size([3, 174, 512]) , top at 301 torch.Size([3, 300, 512]) torch.Size([3, 301, 512])
         for layer in self.layers:
             x = layer(x, hidden_states, src_mask, tgt_mask, memory)
         return self.norm(x)
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, d_model, self_attn, src_attn, feed_forward, dropout, rm_num_slots, rm_d_model):
+    def __init__(
+        self,
+        d_model,
+        self_attn,
+        src_attn,
+        feed_forward,
+        dropout,
+        rm_num_slots,
+        rm_d_model,
+    ):
         super(DecoderLayer, self).__init__()
         self.d_model = d_model
         self.self_attn = self_attn
         self.src_attn = src_attn
         self.feed_forward = feed_forward
-        self.sublayer = clones(ConditionalSublayerConnection(d_model, dropout, rm_num_slots, rm_d_model), 3)
+        self.sublayer = clones(
+            ConditionalSublayerConnection(d_model, dropout, rm_num_slots, rm_d_model), 3
+        )
 
     def forward(self, x, hidden_states, src_mask, tgt_mask, memory):
         m = hidden_states
@@ -151,13 +162,17 @@ class ConditionalLayerNorm(nn.Module):
         self.rm_num_slots = rm_num_slots
         self.eps = eps
 
-        self.mlp_gamma = nn.Sequential(nn.Linear(rm_num_slots * rm_d_model, d_model),
-                                       nn.ReLU(inplace=True),
-                                       nn.Linear(rm_d_model, rm_d_model))
+        self.mlp_gamma = nn.Sequential(
+            nn.Linear(rm_num_slots * rm_d_model, d_model),
+            nn.ReLU(inplace=True),
+            nn.Linear(rm_d_model, rm_d_model),
+        )
 
-        self.mlp_beta = nn.Sequential(nn.Linear(rm_num_slots * rm_d_model, d_model),
-                                      nn.ReLU(inplace=True),
-                                      nn.Linear(d_model, d_model))
+        self.mlp_beta = nn.Sequential(
+            nn.Linear(rm_num_slots * rm_d_model, d_model),
+            nn.ReLU(inplace=True),
+            nn.Linear(d_model, d_model),
+        )
 
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -194,9 +209,10 @@ class MultiHeadedAttention(nn.Module):
         if mask is not None:
             mask = mask.unsqueeze(1)
         nbatches = query.size(0)
-        query, key, value = \
-            [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
-             for l, x in zip(self.linears, (query, key, value))]
+        query, key, value = [
+            l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+            for l, x in zip(self.linears, (query, key, value))
+        ]
 
         x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
 
@@ -232,20 +248,20 @@ class PositionalEncoding(nn.Module):
 
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len).unsqueeze(1).float()
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() *
-                             -(math.log(10000.0) / d_model))
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)
+        )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
-        self.register_buffer('pe', pe)
+        self.register_buffer("pe", pe)
 
     def forward(self, x):
-        x = x + self.pe[:, :x.size(1)]
+        x = x + self.pe[:, : x.size(1)]
         return self.dropout(x)
 
 
 class RelationalMemory(nn.Module):
-
     def __init__(self, num_slots, d_model, num_heads=1):
         super(RelationalMemory, self).__init__()
         self.num_slots = num_slots
@@ -253,10 +269,12 @@ class RelationalMemory(nn.Module):
         self.d_model = d_model
 
         self.attn = MultiHeadedAttention(num_heads, d_model)
-        self.mlp = nn.Sequential(nn.Linear(self.d_model, self.d_model),
-                                 nn.ReLU(),
-                                 nn.Linear(self.d_model, self.d_model),
-                                 nn.ReLU())
+        self.mlp = nn.Sequential(
+            nn.Linear(self.d_model, self.d_model),
+            nn.ReLU(),
+            nn.Linear(self.d_model, self.d_model),
+            nn.ReLU(),
+        )
 
         self.W = nn.Linear(self.d_model, self.d_model * 2)
         self.U = nn.Linear(self.d_model, self.d_model * 2)
@@ -268,7 +286,7 @@ class RelationalMemory(nn.Module):
             pad = torch.zeros((batch_size, self.num_slots, diff))
             memory = torch.cat([memory, pad], -1)
         elif self.d_model < self.num_slots:
-            memory = memory[:, :, :self.d_model]
+            memory = memory[:, :, : self.d_model]
 
         return memory
 
@@ -302,21 +320,37 @@ class RelationalMemory(nn.Module):
 
 
 class EncoderDecoder(AttModel):
-
     def make_model(self, tgt_vocab):
         c = copy.deepcopy
         attn = MultiHeadedAttention(self.num_heads, self.d_model)
         ff = PositionwiseFeedForward(self.d_model, self.d_ff, self.dropout)
         position = PositionalEncoding(self.d_model, self.dropout)
-        rm = RelationalMemory(num_slots=self.rm_num_slots, d_model=self.rm_d_model, num_heads=self.rm_num_heads)
+        rm = RelationalMemory(
+            num_slots=self.rm_num_slots,
+            d_model=self.rm_d_model,
+            num_heads=self.rm_num_heads,
+        )
         model = Transformer(
-            Encoder(EncoderLayer(self.d_model, c(attn), c(ff), self.dropout), self.num_layers),
+            Encoder(
+                EncoderLayer(self.d_model, c(attn), c(ff), self.dropout),
+                self.num_layers,
+            ),
             Decoder(
-                DecoderLayer(self.d_model, c(attn), c(attn), c(ff), self.dropout, self.rm_num_slots, self.rm_d_model),
-                self.num_layers),
+                DecoderLayer(
+                    self.d_model,
+                    c(attn),
+                    c(attn),
+                    c(ff),
+                    self.dropout,
+                    self.rm_num_slots,
+                    self.rm_d_model,
+                ),
+                self.num_layers,
+            ),
             lambda x: x,
             nn.Sequential(Embeddings(self.d_model, tgt_vocab), c(position)),
-            rm)
+            rm,
+        )
         for p in model.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
@@ -343,8 +377,9 @@ class EncoderDecoder(AttModel):
         return []
 
     def _prepare_feature(self, fc_feats, att_feats, att_masks):
-
-        att_feats, seq, att_masks, seq_mask = self._prepare_feature_forward(att_feats, att_masks)
+        att_feats, seq, att_masks, seq_mask = self._prepare_feature_forward(
+            att_feats, att_masks
+        )
         memory = self.model.encode(att_feats, att_masks)
 
         return fc_feats[..., :1], att_feats[..., :1], memory, att_masks
@@ -360,7 +395,7 @@ class EncoderDecoder(AttModel):
         if seq is not None:
             # crop the last one
             seq = seq[:, :-1]
-            seq_mask = (seq.data > 0)
+            seq_mask = seq.data > 0
             seq_mask[:, 0] += True
 
             seq_mask = seq_mask.unsqueeze(-2)
@@ -371,17 +406,19 @@ class EncoderDecoder(AttModel):
         return att_feats, seq, att_masks, seq_mask
 
     def _forward(self, fc_feats, att_feats, seq, att_masks=None):
-
-        att_feats, seq, att_masks, seq_mask = self._prepare_feature_forward(att_feats, att_masks, seq)
+        att_feats, seq, att_masks, seq_mask = self._prepare_feature_forward(
+            att_feats, att_masks, seq
+        )
         out = self.model(att_feats, seq, att_masks, seq_mask)
         outputs = F.log_softmax(self.logit(out), dim=-1)
         return outputs
 
     def core(self, it, fc_feats_ph, att_feats_ph, memory, state, mask):
-
         if len(state) == 0:
             ys = it.unsqueeze(1)
         else:
             ys = torch.cat([state[0][0], it.unsqueeze(1)], dim=1)
-        out = self.model.decode(memory, mask, ys, subsequent_mask(ys.size(1)).to(memory.device))
+        out = self.model.decode(
+            memory, mask, ys, subsequent_mask(ys.size(1)).to(memory.device)
+        )
         return out[:, -1], [ys.unsqueeze(0)]

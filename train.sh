@@ -1,12 +1,33 @@
-source .venv/bin/activate  # if uv created a venv
+#!/bin/bash
 
-TOTAL_NODES=1
-MASTER_ADDR=localhost
-GPUS_PER_NODE=1
-CURRENT_RANK=0
-MASTER_PORT=12340
+nvidia-smi
+# module load python/anaconda-3.14
+# conda activate /scrfs/storage/tp030/home/.conda/envs/control/
+export HOME="/scrfs/storage/tp030/home"
+
+# use conda install nvidia/label/cuda-12.1.0::cuda-toolkit -c nvidia/label/cuda-12.1.0
+export CUDA_HOME=$HOME/.conda/envs/control
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib:$LD_LIBRARY_PATH
+echo "CUDA_HOME: $CUDA_HOME"
+echo "CUDA version:"
+nvcc --version || echo "nvcc not found"
+
+# Additional PyTorch Lightning specific variables
+export PL_TORCH_DISTRIBUTED_BACKEND="nccl"
+TOTAL_NODES=${1}
+MASTER_ADDR=${2}
+OFFSET_RANK=${3}
+
+CURRENT_RANK=$((SLURM_NODEID + OFFSET_RANK))
+MASTER_PORT=12341
+
+source .venv/bin/activate
+uv sync  # ensure environment is synced
+uv pip uninstall opencv-python opencv-python-headless
+uv pip install opencv-python-headless
 
 cd CT2Rep
-torchrun --nnodes=${TOTAL_NODES} --nproc-per-node=${GPUS_PER_NODE} --master-port=${MASTER_PORT} \
-    --master-addr ${MASTER_ADDR} --node-rank=${CURRENT_RANK} \
+torchrun --nnodes=${TOTAL_NODES} --nproc-per-node=${SLURM_GPUS_ON_NODE} --node-rank=${CURRENT_RANK} \
+    --master-addr ${MASTER_ADDR} --master-port=${MASTER_PORT}  \
     main.py --max_seq_length 300 --threshold 10 --epochs 100 --save_dir results/test_ct2rep/ --step_size 1 --gamma 0.8 --batch_size 1 --d_vf 512 --xlsxfile ../example_data/CT2Rep/data_reports_example.xlsx --trainfolder ../example_data/CT2Rep/train --validfolder ../example_data/CT2Rep/valid
