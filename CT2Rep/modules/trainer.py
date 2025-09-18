@@ -2,6 +2,17 @@ import csv
 import os
 
 import pytorch_lightning as pl
+from models.ct2rep import CT2RepModel
+from omegaconf import OmegaConf
+from pytorch_lightning.plugins.environments import (
+    TorchElasticEnvironment,
+)
+
+from modules.loss import compute_loss
+from modules.metrics import compute_scores
+from modules.optimizers import build_lr_scheduler, build_optimizer
+
+TorchElasticEnvironment.validate_settings = lambda self, num_devices, num_nodes: True
 
 
 class CT2RepLightningModule(pl.LightningModule):
@@ -13,33 +24,40 @@ class CT2RepLightningModule(pl.LightningModule):
     """
 
     def __init__(
-        self, model, criterion, metric_ftns, optimizer_fn, lr_scheduler_fn, args
+        self,
+        tokenizer_config,
+        encoder_decoder_config,
+        optimization_config,
+        lr_scheduler_config,
+        monitor_metric,
+        save_dir,
     ):
         super().__init__()
         self.save_hyperparameters(
             ignore=[
                 "model",
-                "criterion",
-                "metric_ftns",
-                "optimizer_fn",
-                "lr_scheduler_fn",
             ]
         )
 
         # Core components
-        self.model = model
-        self.criterion = criterion
-        self.metric_ftns = metric_ftns
-        self.optimizer_fn = optimizer_fn
-        self.lr_scheduler_fn = lr_scheduler_fn
-        self.args = args
+        self.model = CT2RepModel(encoder_decoder_config, tokenizer_config)
+        self.monitor_metric = monitor_metric
+        self.criterion = compute_loss
+        self.metric_ftns = compute_scores
+        self.optimizer_fn = build_optimizer(
+            OmegaConf.create(optimization_config), self.model
+        )
+        self.lr_scheduler_fn = build_lr_scheduler(
+            OmegaConf.create(lr_scheduler_config), self.optimizer_fn
+        )
+        self.save_dir = save_dir
 
         # Initialize validation outputs storage for v2.0 compatibility
         self.validation_outputs = []
 
         # Create save directory if needed
-        if not os.path.exists(args.save_dir):
-            os.makedirs(args.save_dir)
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
 
     def training_step(self, batch, batch_idx):
         """Training step - customize this method for your specific training logic"""
@@ -106,7 +124,7 @@ class CT2RepLightningModule(pl.LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
-                "monitor": f"val_{self.args.monitor_metric}",
+                "monitor": f"val_{self.monitor_metric}",
                 "interval": "epoch",
                 "frequency": 1,
             },
@@ -115,7 +133,7 @@ class CT2RepLightningModule(pl.LightningModule):
     def _save_validation_results(self, val_res, val_gts):
         """Save validation results to CSV files"""
         epoch = self.current_epoch
-        dir_save = self.args.save_dir
+        dir_save = self.save_dir
         gts_file = os.path.join(dir_save, f"{epoch}_gts.csv")
         res_file = os.path.join(dir_save, f"{epoch}_res.csv")
 

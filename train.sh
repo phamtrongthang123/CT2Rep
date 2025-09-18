@@ -23,11 +23,16 @@ CURRENT_RANK=$((SLURM_NODEID + OFFSET_RANK))
 MASTER_PORT=12341
 
 source .venv/bin/activate
-uv sync  # ensure environment is synced
-uv pip uninstall opencv-python opencv-python-headless
-uv pip install opencv-python-headless
+# uv sync  # ensure environment is synced
+# uv pip uninstall opencv-python opencv-python-headless
+# uv pip install opencv-python-headless
 
 cd CT2Rep
 torchrun --nnodes=${TOTAL_NODES} --nproc-per-node=${SLURM_GPUS_ON_NODE} --node-rank=${CURRENT_RANK} \
     --master-addr ${MASTER_ADDR} --master-port=${MASTER_PORT}  \
-    main.py --max_seq_length 300 --threshold 10 --epochs 100 --save_dir results/test_ct2rep/ --step_size 1 --gamma 0.8 --batch_size 1 --d_vf 512 --xlsxfile ../example_data/CT2Rep/data_reports_example.xlsx --trainfolder ../example_data/CT2Rep/train --validfolder ../example_data/CT2Rep/valid
+    main.py fit --config config.yaml --trainer.num_nodes ${TOTAL_NODES}
+    
+    
+    
+    
+

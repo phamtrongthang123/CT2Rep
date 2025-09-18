@@ -1,307 +1,134 @@
-import argparse
-
+import numpy as np
 import pytorch_lightning as pl
 import torch
-from models.ct2rep import CT2RepModel
 from modules.data_ct import CTReportDataset
-from modules.dataloaders import R2DataLoader
-from modules.loss import compute_loss
-from modules.metrics import compute_scores
-from modules.optimizers import build_lr_scheduler, build_optimizer
 from modules.tokenizers import Tokenizer
 from modules.trainer import CT2RepLightningModule
+from pytorch_lightning.cli import LightningCLI
+from torch.utils.data import DataLoader
 
 
-def parse_agrs():
-    parser = argparse.ArgumentParser()
+def custom_collate_fn(data):
+    images_id, images, reports_ids, reports_masks, seq_lengths = zip(*data)
+    images = torch.stack(images, 0)
+    max_seq_length = max(seq_lengths)
+    targets = np.zeros((len(reports_ids), max_seq_length), dtype=int)
+    targets_masks = np.zeros((len(reports_ids), max_seq_length), dtype=int)
 
-    # Data loader settings
-    parser.add_argument(
-        "--max_seq_length",
-        type=int,
-        default=200,
-        help="the maximum sequence length of the reports.",
-    )
-    parser.add_argument(
-        "--threshold", type=int, default=3, help="the cut off frequency for the words."
-    )
-    parser.add_argument(
-        "--num_workers",
-        type=int,
-        default=2,
-        help="the number of workers for dataloader.",
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=2, help="the number of samples for a batch"
-    )
-    parser.add_argument(
-        "--dataset_name", type=str, default="ct_dataset", help="dataset name."
+    for i, report_ids in enumerate(reports_ids):
+        targets[i, : len(report_ids)] = report_ids
+
+    for i, report_masks in enumerate(reports_masks):
+        targets_masks[i, : len(report_masks)] = report_masks
+
+    return (
+        images_id,
+        images,
+        torch.LongTensor(targets),
+        torch.FloatTensor(targets_masks),
     )
 
-    # Model settings (for Transformer)
-    parser.add_argument(
-        "--d_model", type=int, default=512, help="the dimension of Transformer."
-    )
-    parser.add_argument("--d_ff", type=int, default=512, help="the dimension of FFN.")
-    parser.add_argument(
-        "--d_vf", type=int, default=512, help="the dimension of the patch features."
-    )
-    parser.add_argument(
-        "--num_heads", type=int, default=8, help="the number of heads in Transformer."
-    )
-    parser.add_argument(
-        "--num_layers", type=int, default=3, help="the number of layers of Transformer."
-    )
-    parser.add_argument(
-        "--dropout", type=float, default=0.1, help="the dropout rate of Transformer."
-    )
-    parser.add_argument(
-        "--logit_layers", type=int, default=1, help="the number of the logit layer."
-    )
-    parser.add_argument("--bos_idx", type=int, default=0, help="the index of <bos>.")
-    parser.add_argument("--eos_idx", type=int, default=0, help="the index of <eos>.")
-    parser.add_argument("--pad_idx", type=int, default=0, help="the index of <pad>.")
-    parser.add_argument(
-        "--use_bn", type=int, default=0, help="whether to use batch normalization."
-    )
-    parser.add_argument(
-        "--drop_prob_lm",
-        type=float,
-        default=0.5,
-        help="the dropout rate of the output layer.",
-    )
 
-    # for Relational Memory
-    parser.add_argument(
-        "--rm_num_slots", type=int, default=3, help="the number of memory slots."
-    )
-    parser.add_argument(
-        "--rm_num_heads", type=int, default=8, help="the numebr of heads in rm."
-    )
-    parser.add_argument(
-        "--rm_d_model", type=int, default=512, help="the dimension of rm."
-    )
+class CTReportDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        trainfolder: str,
+        validfolder: str,
+        xlsxfile: str,
+        max_seq_length: int,
+        tokenizer_config: dict,
+        num_frames: int = 2,
+        batch_size: int = 32,
+        num_workers: int = 4,
+    ):
+        super().__init__()
+        self.save_hyperparameters(ignore=["tokenizer"])
+        self.tokenizer = Tokenizer(**tokenizer_config)
 
-    # Sample related
-    parser.add_argument(
-        "--sample_method",
-        type=str,
-        default="beam_search",
-        help="the sample methods to sample a report.",
-    )
-    parser.add_argument(
-        "--beam_size", type=int, default=3, help="the beam size when beam searching."
-    )
-    parser.add_argument(
-        "--temperature", type=float, default=1.0, help="the temperature when sampling."
-    )
-    parser.add_argument(
-        "--sample_n", type=int, default=1, help="the sample number per image."
-    )
-    parser.add_argument("--group_size", type=int, default=1, help="the group size.")
-    parser.add_argument(
-        "--output_logsoftmax",
-        type=int,
-        default=1,
-        help="whether to output the probabilities.",
-    )
-    parser.add_argument(
-        "--decoding_constraint",
-        type=int,
-        default=0,
-        help="whether decoding constraint.",
-    )
-    parser.add_argument(
-        "--block_trigrams", type=int, default=1, help="whether to use block trigrams."
-    )
+        # Store parameters
+        self.trainfolder = trainfolder
+        self.validfolder = validfolder
+        self.xlsxfile = xlsxfile
+        self.num_frames = num_frames
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.max_seq_length = max_seq_length
+        # Will hold datasets
+        self.train_ds = None
+        self.valid_ds = None
 
-    # Trainer settings
-    parser.add_argument(
-        "--n_gpu", type=int, default=1, help="the number of gpus to be used."
-    )
-    parser.add_argument(
-        "--epochs", type=int, default=100, help="the number of training epochs."
-    )
-    parser.add_argument(
-        "--save_dir", type=str, default="results/", help="the patch to save the models."
-    )
-    parser.add_argument(
-        "--record_dir",
-        type=str,
-        default="records/",
-        help="the patch to save the results of experiments",
-    )
-    parser.add_argument("--save_period", type=int, default=1, help="the saving period.")
-    parser.add_argument(
-        "--monitor_mode",
-        type=str,
-        default="max",
-        choices=["min", "max"],
-        help="whether to max or min the metric.",
-    )
-    parser.add_argument(
-        "--monitor_metric",
-        type=str,
-        default="BLEU_4",
-        help="the metric to be monitored.",
-    )
-    parser.add_argument(
-        "--early_stop", type=int, default=50, help="the patience of training."
-    )
-
-    # Optimization
-    parser.add_argument(
-        "--optim", type=str, default="Adam", help="the type of the optimizer."
-    )
-    parser.add_argument(
-        "--lr_ve",
-        type=float,
-        default=5e-5,
-        help="the learning rate for the visual extractor.",
-    )
-    parser.add_argument(
-        "--lr_ed",
-        type=float,
-        default=1e-4,
-        help="the learning rate for the remaining parameters.",
-    )
-    parser.add_argument(
-        "--weight_decay", type=float, default=5e-5, help="the weight decay."
-    )
-    parser.add_argument("--amsgrad", type=bool, default=True, help=".")
-
-    # Learning Rate Scheduler
-    parser.add_argument(
-        "--lr_scheduler",
-        type=str,
-        default="StepLR",
-        help="the type of the learning rate scheduler.",
-    )
-    parser.add_argument(
-        "--step_size",
-        type=int,
-        default=50,
-        help="the step size of the learning rate scheduler.",
-    )
-    parser.add_argument(
-        "--gamma",
-        type=float,
-        default=0.1,
-        help="the gamma of the learning rate scheduler.",
-    )
-
-    # Others
-    parser.add_argument(
-        "--xlsxfile",
-        type=str,
-        default="../example_data/CT2Rep/data_reports_example.xlsx",
-        help="reports xlsx file.",
-    )
-    parser.add_argument(
-        "--trainfolder",
-        type=str,
-        default="../example_data/CT2Rep/train",
-        help="train folder.",
-    )
-    parser.add_argument(
-        "--validfolder",
-        type=str,
-        default="../example_data/CT2Rep/valid",
-        help="valid folder.",
-    )
-
-    parser.add_argument(
-        "--resume",
-        type=str,
-        help="whether to resume the training from existing checkpoints.",
-    )
-
-    args = parser.parse_args()
-    return args
-
-
-def main():
-    # parse arguments
-    args = parse_agrs()
-
-    # create tokenizer
-    tokenizer = Tokenizer(args)
-
-    train_ds = CTReportDataset(
-        args,
-        data_folder=args.trainfolder,
-        xlsx_file=args.xlsxfile,
-        tokenizer=tokenizer,
-        num_frames=2,
-    )
-    valid_ds = CTReportDataset(
-        args,
-        data_folder=args.validfolder,
-        xlsx_file=args.xlsxfile,
-        tokenizer=tokenizer,
-        num_frames=2,
-    )
-
-    # create data loader
-    train_dataloader = R2DataLoader(
-        args, train_ds, tokenizer, split="train", shuffle=True
-    )
-    val_dataloader = R2DataLoader(args, valid_ds, tokenizer, split="val", shuffle=False)
-
-    # build model architecture
-    model = CT2RepModel(args, tokenizer)
-
-    # get function handles of loss and metrics
-    criterion = compute_loss
-    metrics = compute_scores
-
-    # build optimizer, learning rate scheduler
-    optimizer = build_optimizer(args, model)
-    lr_scheduler = build_lr_scheduler(args, optimizer)
-
-    # Create Lightning module
-    lightning_module = CT2RepLightningModule(
-        model=model,
-        criterion=criterion,
-        metric_ftns=metrics,
-        optimizer_fn=optimizer,
-        lr_scheduler_fn=lr_scheduler,
-        args=args,
-    )
-
-    # Create Lightning trainer with callbacks
-    trainer = pl.Trainer(
-        max_epochs=args.epochs,
-        devices=args.n_gpu if torch.cuda.is_available() else "auto",
-        accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        default_root_dir=args.save_dir,
-        callbacks=[
-            pl.callbacks.ModelCheckpoint(
-                dirpath=args.save_dir,
-                monitor=f"val_{args.monitor_metric}",
-                mode=args.monitor_mode,
-                save_top_k=1,
-                filename="best-{epoch}-{val_" + args.monitor_metric + ":.2f}",
-                save_last=True,
-            ),
-            pl.callbacks.EarlyStopping(
-                monitor=f"val_{args.monitor_metric}",
-                mode=args.monitor_mode,
-                patience=args.early_stop,
-            ),
-        ],
-        enable_progress_bar=True,
-        log_every_n_steps=50,
-    )
-
-    # Train the model (with optional checkpoint resuming)
-    if args.resume is not None:
-        trainer.fit(
-            lightning_module, train_dataloader, val_dataloader, ckpt_path=args.resume
+    def setup(self, stage=None):
+        """Called on every process in DDP"""
+        self.train_ds = CTReportDataset(
+            max_seq_length=self.max_seq_length,
+            data_folder=self.trainfolder,
+            xlsx_file=self.xlsxfile,
+            tokenizer=self.tokenizer,
+            num_frames=self.num_frames,
         )
-    else:
-        trainer.fit(lightning_module, train_dataloader, val_dataloader)
+        self.valid_ds = CTReportDataset(
+            max_seq_length=self.max_seq_length,
+            data_folder=self.validfolder,
+            xlsx_file=self.xlsxfile,
+            tokenizer=self.tokenizer,
+            num_frames=self.num_frames,
+        )
+
+    def train_dataloader(self):
+        return DataLoader(
+            dataset=self.train_ds,
+            shuffle=True,
+            collate_fn=custom_collate_fn,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            dataset=self.valid_ds,
+            shuffle=False,
+            collate_fn=custom_collate_fn,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+        )
+
+
+class CustomCLI(LightningCLI):
+    def add_arguments_to_parser(self, parser):
+        # Add tokenizer configuration
+        parser.add_class_arguments(Tokenizer, "tokenizer")
+        parser.add_argument(
+            "--xlsxfile",
+            type=str,
+            required=True,
+            help="Path to the Excel file used by all components",
+        )
+
+    def instantiate_classes(self):
+        # the ${} doesn't work in this version so i have to set manually
+        self.config.fit.tokenizer.xlsxfile = self.config.fit.xlsxfile
+        # Inject into model and datamodule configs
+        self.config.fit.data.tokenizer_config = dict(self.config.fit.tokenizer)
+        # breakpoint()
+        self.config.fit.model.tokenizer_config = dict(self.config.fit.tokenizer)
+
+        # other mapping
+        self.config.fit.data.max_seq_length = (
+            self.config.fit.model.encoder_decoder_config["max_seq_length"]
+        )
+        self.config.fit.data.xlsxfile = self.config.fit.xlsxfile
+        self.config.fit.trainer.default_root_dir = self.config.fit.model.save_dir
+        self.config.fit.trainer.callbacks[
+            0
+        ].init_args.dirpath = self.config.fit.model.save_dir
+        self.config.fit.trainer.callbacks[
+            0
+        ].init_args.monitor = f"val_{self.config.fit.model.monitor_metric}"
+        self.config.fit.trainer.callbacks[0].init_args.filename = (
+            "best-{epoch}-{val_" + self.config.fit.model.monitor_metric + ":.2f}"
+        )
+        super().instantiate_classes()
 
 
 if __name__ == "__main__":
-    main()
+    cli = CustomCLI(CT2RepLightningModule, CTReportDataModule)

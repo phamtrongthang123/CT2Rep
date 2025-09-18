@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class VisualExtractor(nn.Module):
-    def __init__(self, feature_model, args):
+    def __init__(self, feature_model):
         super(VisualExtractor, self).__init__()
         self.model = feature_model
         self.avg_fnt = torch.nn.AvgPool3d(kernel_size=20, stride=1, padding=0)

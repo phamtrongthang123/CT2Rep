@@ -1,7 +1,10 @@
 # CT2Rep
 MICCAI 2024 & CT2Rep: Automated Radiology Report Generation for 3D Medical Imaging
  
- 
+## debug 
+
+
+
 ## Requirements
 
 Before you start, you will need to install the necessary dependencies. To do so, execute the following commands:

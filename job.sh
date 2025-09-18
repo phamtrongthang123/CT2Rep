@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=CT2Rep
-#SBATCH --time=01:00:00
+#SBATCH --time=1-00:00:00
 #SBATCH --output=logs/%j_%N.out
 #SBATCH --error=logs/%j_%N.err
 #SBATCH --distribution=cyclic
 
-#SBATCH --nodes=1
-#SBATCH --partition=vgpu
+#SBATCH --nodes=2
+#SBATCH --partition=agpu72
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16

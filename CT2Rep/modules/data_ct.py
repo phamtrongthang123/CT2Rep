@@ -19,11 +19,11 @@ def cast_num_frames(t, *, frames):
 
 
 class CTReportDataset(Dataset):
-    def __init__(self, args, data_folder, xlsx_file, tokenizer, min_slices=20, resize_dim=500, num_frames=2, force_num_frames=True):
+    def __init__(self, max_seq_length, data_folder, xlsx_file, tokenizer, min_slices=20, resize_dim=500, num_frames=2, force_num_frames=True):
         self.data_folder = data_folder
         self.min_slices = min_slices
         self.tokenizer = tokenizer
-        self.max_seq_length = args.max_seq_length
+        self.max_seq_length = max_seq_length
         self.accession_to_text = self.load_accession_text(xlsx_file)
         self.paths=[]
         self.samples = self.prepare_samples()
