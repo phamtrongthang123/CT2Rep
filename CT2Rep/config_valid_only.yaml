@@ -1,0 +1,75 @@
+xlsxfile: "../example_data/CT2Rep/data_reports_example.xlsx"
+
+data:
+  trainfolder: "../example_data/CT2Rep/train"
+  validfolder: "../example_data/CT2Rep/valid"
+  num_workers: 2
+  batch_size: 1
+  max_seq_length: 300
+  xlsxfile: ${xlsxfile}
+  tokenizer_config: 
+    dummy: 1
+
+tokenizer:
+  threshold: 10
+  xlsxfile: "${xlsxfile}"
+
+model:
+  monitor_metric: "BLEU_4"
+  save_dir: "results/test_ct2rep2/"
+  tokenizer_config:
+    dummy: 1
+  encoder_decoder_config:
+    d_model: 512
+    d_ff: 512
+    num_heads: 8
+    num_layers: 3
+    dropout: 0.1
+    logit_layers: 1
+    bos_idx: 0
+    eos_idx: 0
+    pad_idx: 0
+    use_bn: 0
+    drop_prob_lm: 0.5
+    max_seq_length: 300
+    d_vf: 512
+    rm_num_slots: 3
+    rm_num_heads: 8
+    rm_d_model: 512
+    sample_method: "beam_search"
+    beam_size: 3
+    temperature: 1.0
+    sample_n: 1
+    group_size: 1
+    output_logsoftmax: 1
+    decoding_constraint: 0
+    block_trigrams: 1
+  optimization_config:
+    optim: "Adam"
+    lr_ve: 5e-5
+    lr_ed: 1e-4
+    weight_decay: 5e-5
+    amsgrad: true
+  lr_scheduler_config:
+    lr_scheduler: "StepLR"
+    step_size: 1
+    gamma: 0.8
+
+trainer:
+  default_root_dir: ${model.save_dir}
+  max_epochs: 100  # set default, or use ${epochs}
+  devices: "auto"
+  accelerator: "gpu"
+  num_nodes: 2
+  strategy: "ddp_find_unused_parameters_true"  # Enable Distributed Data Parallel
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: "${model.save_dir}"
+        monitor: "val_${model.monitor_metric}"
+        mode: "max"
+        save_top_k: -1
+        filename: "best-{epoch}-{val_${model.monitor_metric}:.2f}"
+        save_last: true
+  enable_progress_bar: true
+  log_every_n_steps: 1
