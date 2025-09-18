@@ -33,7 +33,7 @@ def resize_array(array, current_spacing, target_spacing):
     return resized_array
 
 
-def convert_nii_to_npz_proper(nii_path, slope=1, intercept=0):
+def convert_nii_to_npz_proper(nii_path):
     """
     Convert NIfTI to NPZ format matching the existing dataset format
     """
