@@ -42,7 +42,7 @@ def convert_nii_to_npz_proper(nii_path, slope=1, intercept=0):
     nii_img = nib.load(str(nii_path))
     img_data = nii_img.get_fdata()
     header = nii_img.header
-
+    # print(header)
     # Get spacing from NIfTI header
     pixdim = header["pixdim"][1:4]  # pixdim[1:4] contains x, y, z spacing
     xy_spacing = pixdim[0]  # x spacing
@@ -58,9 +58,9 @@ def convert_nii_to_npz_proper(nii_path, slope=1, intercept=0):
 
     current = (z_spacing, xy_spacing, xy_spacing)
     target = (target_z_spacing, target_x_spacing, target_y_spacing)
-    #TODO when you have the fixed data, read the intercept from the metadata 
-    img_data = slope * img_data - 8192
-    hu_min, hu_max = -1000, 200
+    # this is already scaled
+    # img_data = slope * img_data - 8192
+    hu_min, hu_max = -1000, 1000
     img_data = np.clip(img_data, hu_min, hu_max)
 
     img_data = img_data.transpose(2, 0, 1)
@@ -102,6 +102,7 @@ def analyze_existing_npz_format(npz_path):
 if __name__ == "__main__":
     # File paths
     nii_file = "dataset/dataset/train/train_1/train_1_a/train_1_a_1.nii.gz"
+    nii_file = '/home/tp030/CT2Rep/example_download_script/data_volumes/dataset/train_fixed/train_2/train_2_a/train_2_a_1.nii.gz'
     existing_npz = "example_data/CT2Rep/train/1/BGC2074584/_(512, 512).npz"
     output_npz = "/home/tp030/CT2Rep/properly_converted.npz"
     print("=== PROPER NIfTI TO NPZ CONVERSION ===\n")
