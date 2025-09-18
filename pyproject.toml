@@ -8,6 +8,7 @@ dependencies = [
     "ctvit",
     "huggingface-hub>=0.34.5",
     "jsonargparse[signatures]>=4.41.0",
+    "lightning[extra]>=2.5.5",
     "numpy>=2.3.3",
     "omegaconf>=2.3.0",
     "openpyxl>=3.1.5",

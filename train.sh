@@ -30,7 +30,7 @@ source .venv/bin/activate
 cd CT2Rep
 torchrun --nnodes=${TOTAL_NODES} --nproc-per-node=${SLURM_GPUS_ON_NODE} --node-rank=${CURRENT_RANK} \
     --master-addr ${MASTER_ADDR} --master-port=${MASTER_PORT}  \
-    main.py fit --config config.yaml --trainer.num_nodes ${TOTAL_NODES}
+    main.py fit --config config_valid_only.yaml --trainer.num_nodes ${TOTAL_NODES}
     
     
     

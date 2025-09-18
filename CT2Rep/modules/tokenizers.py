@@ -15,11 +15,11 @@ class Tokenizer(object):
 
         with open("idx2token.json", "w") as json_file:
             # Write the dictionary to the file using JSON format
-            json.dump(self.idx2token, json_file)
+            json.dump(self.idx2token, json_file, indent=4)
 
         with open("token2idx.json", "w") as json_file:
             # Write the dictionary to the file using JSON format
-            json.dump(self.token2idx, json_file)
+            json.dump(self.token2idx, json_file, indent=4)
 
     def load_accession_text(self, xlsx_file):
         df = pd.read_excel(xlsx_file)

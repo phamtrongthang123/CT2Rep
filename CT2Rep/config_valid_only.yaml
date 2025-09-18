@@ -1,8 +1,8 @@
-xlsxfile: "../example_data/CT2Rep/data_reports_example.xlsx"
+xlsxfile: "../example_download_script/merged_data.xlsx"
 
 data:
-  trainfolder: "../example_data/CT2Rep/train"
-  validfolder: "../example_data/CT2Rep/valid"
+  trainfolder: "../example_download_script/data_converted/dataset/valid_fixed"
+  validfolder: "../example_download_script/data_converted/dataset/valid_fixed"
   num_workers: 2
   batch_size: 1
   max_seq_length: 300
@@ -16,7 +16,7 @@ tokenizer:
 
 model:
   monitor_metric: "BLEU_4"
-  save_dir: "results/test_ct2rep2/"
+  save_dir: "results/valid_ct2rep/"
   tokenizer_config:
     dummy: 1
   encoder_decoder_config:
